@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Time Selector Demo</title>
+<link rel="stylesheet" type="text/css" href="http://yui.yahooapis.com/3.3.0/build/cssreset/reset-min.css">
+<style type="text/css" media="screen">
+.TimeSelector_TextDisplay_Container { position: relative; display: inline-block; cursor: pointer;
+border: 1px solid black;
+border-radius: 3px; -webkit-border-radius: 3px;
+background-image: -moz-linear-gradient(top, #fcfcfc, #f7f7f7 3%, #f2f2f2 12%, #d9d9d9 90%, #bfbfbf);
+background-image: -webkit-gradient(linear, center top, center bottom, from(#fcfcfc), to(#bfbfbf), color-stop(3%, #f7f7f7), color-stop(12%, #f2f2f2), color-stop(90%, #d9d9d9));
+}
+.TimeSelector_TextDisplay_Value { padding: 5px; margin: 0; }
+
+.TimeSelector_Control_Container table td { vertical-align: middle; }
+.TimeSelector_Control { float: left; }
+.TimeSelector_Control_Separator { float: left; height: 100%; }
+.TimeSelector_Control_Button { display: block; background: #bfbfbf; text-align: center; padding: 2px 5px; color: #FFF; font-weight: bold; text-decoration: none; }
+.TimeSelector_Control_Input { margin: 0; padding: 5px; border: 0; outline: 0; border: 2px solid #bfbfbf; border-top: 0; border-bottom: 0; }
+</style>
+</head>
+<body>
+	
+<input type="text" name="start_time" id="start_time">
+
+<script src="http://code.jquery.com/jquery-1.6.1.min.js" type="text/javascript" charset="utf-8"></script>
+<script type="text/javascript" charset="utf-8">
+(function($)
+{
+	$.fn.timeSelector = function(options)
+	{
+		this.each(function(key, element)
+		{
+			element.timeSelector = new TimeSelector(element, options)
+			
+			return this;
+		})
+		
+		return this;
+	}
+	
+	var TimeSelector = function(input, options)
+	{
+		var options		= $.extend(TimeSelector.defaultOptions, options),
+			input 		= $(input),
+			wrapper		= $("<div/>").addClass("TimeSelector_Wrapper").insertBefore(input),
+			timeDisplay = null,
+			timeControl = null,
+			currentTime = null;
+			
+		function init()
+		{
+			options.postInputPrefix = (false == options.postInputPrefix)? input.attr('name') : options.postInputPrefix;
+			
+			if (options.postInput == Constants.postInputs.SINGLE)
+			{
+				/* We're going to post the selected value as a single field.
+				 * Instead of making a new input box, we'll just re-use the one
+				 * that our user attached.
+				**/
+				
+				input.css('display', 'none');
+				input.attr('name', options.postInputPrefix);
+			}
+			
+			wrapper.append( input.remove() )
+			
+			if (false == options.defaultValue)
+			{
+				/* User did not set default value. So, we use the current time. */
+				var defaultTime = new Date();
+			}
+			else if (parseInt(options.defaultValue) == options.defaultValue)
+			{
+				//check to see if we have a millisecond value...if not, make one by multiplying by 1,000
+				if (options.defaultValue < 1000000000000)
+				{
+					options.defaultValue = options.defaultValue * 1000;
+				}
+				
+				var defaultTime = new Date( options.defaultValue );
+			}
+			else
+			{
+				throw new Error("To do: Parse a real time and pre-populate the fields.");
+			}
+			
+			setTime(defaultTime.getHours(), defaultTime.getMinutes(), defaultTime.getSeconds());
+			
+			var displayOptions = {
+				wrapper: 		wrapper,
+				hourFormat: 	options.hourFormat,
+				selectMinutes: 	options.selectMinutes,
+				selectSeconds: 	options.selectSeconds
+			};
+			
+			switch (options.displayMethod)
+			{
+				case Constants.DisplayMethods.TEXT:
+					timeDisplay = new TextTimeDisplay(displayOptions);
+				break;
+				
+				case Constants.DisplayMethods.INPUT:
+					timeDisplay = new InputTimeDisplay(displayOptions);
+				break;
+			}
+			
+			timeDisplay.displayTime(defaultTime.getHours(), defaultTime.getMinutes(), defaultTime.getSeconds());
+			
+			timeControl = new TimeSelectorControl({
+				selectMinutes: 	options.selectMinutes,
+				minuteStep: 	options.minuteStep,
+				selectSeconds: 	options.selectSeconds,
+				secondStep: 	options.secondStep,
+				hourFormat: 	options.hourFormat,
+				container: 		wrapper,
+				defaultTime: 	defaultTime			
+			});
+		}
+		
+		this.setTime = function(hours, minutes, seconds) { return setTime(hours, minutes, seconds); }
+		function setTime(hours, minutes, seconds)
+		{
+			var dateString = "";
+			
+			if (12 == options.hourFormat && hours > 12)
+			{
+				dateString += strpad(hours - 12, 0, 2, -1) + ":";
+			}
+			else
+			{
+				dateString += strpad(hours, 0, 2, -1) + ":";
+			}
+			
+			dateString += strpad(minutes, 0, 2, -1) + ":";
+			dateString += strpad(seconds, 0, 2, -1);
+			
+			if (12 == options.hourFormat)
+			{
+				dateString += " " + (hours >= 12? 'PM' : 'AM');
+			}
+			
+			input.val(dateString);
+		}
+		
+		/* initialize the object! */
+		init();
+		
+	}
+	
+	var TimeSelectorControl = function(options)
+	{
+		var options = options, //selectMinute, selectSeconds, minuteStep, secondStep, hourFormat
+		
+			dom = {
+				container: null,
+				
+				hourUp: null,
+				hourDown: null,
+				hourVal: null,
+				
+				minuteUp: null,
+				minuteDown: null,
+				minuteVal: null,
+				
+				secondUp: null,
+				secondDown: null,
+				secondVal: null,
+				
+				ampmSelect: null
+			};
+			
+			
+		function init()
+		{
+			dom.container	= $('<div />').addClass("TimeSelector_Control_Container");
+			var table = $('<table></table>'),
+				upRow = $('<tr />').appendTo(table),
+				inputRow = $('<tr />').appendTo(table),
+				downRow = $('<tr />').appendTo(table);
+			
+			
+			dom.hourUp		= $('<a />').addClass("TimeSelector_Control_Button TimeSelector_Control_ButtonUp TimeSelector_Control_HourUp")
+								.attr({
+									href: "#nextHour",
+									title: "Next Hour"
+								})
+								.html("+");
+								
+			dom.hourDown	= $('<a />').addClass("TimeSelector_Control_Button TimeSelector_Control_ButtonDown TimeSelector_Control_HourDown")
+								.attr({
+									href: "#prevHour",
+									title: "Previous Hour"
+								})
+								.html("-");
+								
+			dom.hourVal		= $('<input type="text" />').addClass("TimeSelector_Control_Input TimeSelector_Control_HourInput")
+								.attr({
+									size: 2,
+									maxLength: 2
+								});
+
+			/*table.append(
+				$('<div />').addClass("TimeSelector_Control TimeSelector_Control_HourSelect")
+					.append(dom.hourUp)
+					.append(dom.hourVal)
+					.append(dom.hourDown)
+			);*/
+			
+			upRow.append( $('<td />').append(dom.hourUp) );
+			inputRow.append ($('<td />').append(dom.hourVal) );
+			downRow.append( $('<td />').append(dom.hourDown) );
+			
+			if (options.selectMinutes)
+			{
+				dom.minuteUp	= $('<a />').addClass("TimeSelector_Control_Button TimeSelector_Control_ButtonUp TimeSelector_Control_MinuteUp")
+									.attr({
+										href: "#nextMinute",
+										title: "Next Minute"
+									})
+									.html("+");
+									
+				dom.minuteDown	= $('<a />').addClass("TimeSelector_Control_Button TimeSelector_Control_ButtonDown TimeSelector_Control_MinuteDown")
+									.attr({
+										href: "#prevMinute",
+										title: "Previous Minute"
+									})
+									.html("-");
+									
+				dom.minuteVal	= $('<input type="text" />').addClass("TimeSelector_Control_Input TimeSelector_Control_MinuteInput")
+									.attr({
+										size: 2,
+										maxLength: 2
+									});
+									
+				/*table.append(
+					$('<div />').addClass("TimeSelector_Control_Separator").html(":")
+				).append(
+					$('<div />').addClass("TimeSelector_Control TimeSelector_Control_MinuteSelect")
+						.append(dom.minuteUp)
+						.append(dom.minuteVal)
+						.append(dom.minuteDown)
+				);*/
+				
+				upRow.append( $('<td />').append("") ).append(dom.minuteUp);
+				inputRow.append( $('<td />').append(":") ).append ($('<td />').append(dom.minuteVal) );
+				downRow.append( $('<td />').append("") ).append( $('<td />').append(dom.minuteDown) );
+			}
+			
+			if (options.selectSeconds)
+			{
+				dom.secondUp	= $('<a />').addClass("TimeSelector_Control_Button TimeSelector_Control_ButtonUp TimeSelector_Control_SecondUp")
+									.attr({
+										href: "#nextSecond",
+										title: "Next Second"
+									})
+									.html("+");
+									
+				dom.secondDown	= $('<a />').addClass("TimeSelector_Control_Button TimeSelector_Control_ButtonDown TimeSelector_Control_SecondDown")
+									.attr({
+										href: "#prevSecond",
+										title: "Previous Second"
+									})
+									.html("-");
+									
+				dom.secondVal		= $('<input type="text" />').addClass("TimeSelector_Control_Input TimeSelector_Control_SecondInput")
+									.attr({
+										size: 2,
+										maxLength: 2
+									});
+									
+				/*table.	append(
+						$('<div />').addClass("TimeSelector_Control_Separator").html(":")
+				).append(					
+					$('<div />').addClass("TimeSelector_Control TimeSelector_Control_SecondSelect")
+						.append(dom.secondUp)
+						.append(dom.secondVal)
+						.append(dom.secondDown)
+				);*/
+				
+				upRow.append( $('<td />').append("") ).append(dom.secondUp);
+				inputRow.append( $('<td />').append(":") ).append ($('<td />').append(dom.secondVal) );
+				downRow.append( $('<td />').append("") ).append( $('<td />').append(dom.secondDown) );
+			}
+				
+			if (options.hourFormat == 12)
+			{
+				dom.ampmSelect = $('<a />').addClass("TimeSelector_Control_Button TimeSelector_Control TimeSelector_Control_ampmInput")
+									.attr({
+										href: "#ampm",
+										title: "Select AM or PM"
+									}).html("AM");
+				
+				/*table.append(
+					$('<div />').addClass("TimeSelector_Control TimeSelector_Control_ampmSelect")
+						.append(dom.ampmSelect)
+				);*/
+				
+				inputRow.append( $('<td />').append(dom.ampmSelect) );
+			}
+			
+			dom.container.append(table)
+			options.container.append(dom.container);
+			
+			var defaultTime = options.defaultTime;
+			setTime(defaultTime.getHours(), defaultTime.getMinutes(), defaultTime.getSeconds());
+		}
+		
+		
+		init();
+		
+		/* show
+		 *
+		 * Shows the Time selector
+		**/
+		this.show = function() {}
+		
+		/* hide
+		 * 
+		 * Hides the Time selector
+		**/
+		this.hide = function() {}
+		
+		/* get
+		 *
+		 * Returns the Time Selector container
+		**/
+		this.get = function() {}
+		
+		/* getTime
+		 *
+		 * Gets the currently selected time
+		**/
+		this.getTime = function() {}
+		
+		/* setTime
+		 *
+		 * Sets the selected time (to populate default value)
+		 * 
+		 * @hours	int	- hour to set (24 hour format)
+		 * @minutes	int	optional - minute to set
+		 * @seconds	int	optional - seconds to set
+		**/
+		this.setTime = function(hours, minutes, seconds) { return setTime(hours, minutes, seconds); }
+		function setTime(hours, minutes, seconds)
+		{
+			if (12 == options.hourFormat && hours > 12)
+			{
+				hours = strpad(hours - 12, 0, 2, -1);
+			}
+			else
+			{
+				hours = strpad(hours, 0, 2, -1);
+			}
+			
+			dom.hourVal.val( hours )
+			
+			if (options.selectMinutes)
+			{
+				minutes = strpad(minutes, 0, 2, -1);
+				dom.minuteVal.val( minutes );
+			}
+			
+			if (options.selectSeconds)
+			{
+				seconds = strpad(seconds, 0, 2, -1);
+				dom.secondVal.val( seconds );
+			}
+			
+			if (12 == options.hourFormat)
+			{
+				ampm = (hours >= 12? 'PM' : 'AM');
+				dom.ampmSelect.html( ampm )
+			}
+			
+			return true;
+		}
+	}
+	
+	var Constants = {
+		DisplayMethods: {
+			TEXT: 'text',
+			INPUT: 'input'
+		},
+		
+		postInputs: {
+			SINGLE: 'single',
+			MULTI: 'multi'
+		}
+	};
+	
+	TimeSelector.defaultOptions = {
+		defaultValue: 	false,
+		hourFormat: 	12,
+		displayMethod: 	Constants.DisplayMethods.TEXT,
+		selectMinutes: 	true,
+		minuteStep: 	1,
+		selectSeconds: 	true,
+		secondStep: 	1,
+		postInput: 		Constants.postInputs.SINGLE,
+		postInputPrefix: false,
+		selectText: 	'Select',
+		cancelText: 	'Cancel',
+		
+		defaultEventHandler: 	function() { return true; }
+	};
+	
+	$.extend(TimeSelector, {
+		onOpen: 			TimeSelector.defaultOptions.defaultEventHandler,
+		onClose: 			TimeSelector.defaultOptions.defaultEventHandler,
+		onSelect: 			TimeSelector.defaultOptions.defaultEventHandler,
+		onCancel: 			TimeSelector.defaultOptions.defaultEventHandler,
+		
+		onHourUp: 			TimeSelector.defaultOptions.defaultEventHandler,
+		onHourDown: 		TimeSelector.defaultOptions.defaultEventHandler,
+		onHourChange: 		TimeSelector.defaultOptions.defaultEventHandler,
+		
+		onMinuteUp: 		TimeSelector.defaultOptions.defaultEventHandler,
+		onMinuteDown: 		TimeSelector.defaultOptions.defaultEventHandler,
+		onMinuteChange:		TimeSelector.defaultOptions.defaultEventHandler,
+		
+		onSecondUp: 		TimeSelector.defaultOptions.defaultEventHandler,
+		onSecondDown: 		TimeSelector.defaultOptions.defaultEventHandler,
+		onSecondChange:		TimeSelector.defaultOptions.defaultEventHandler,
+		
+		onAMPMChange: 		TimeSelector.defaultOptions.defaultEventHandler,
+	});
+	
+	var TextTimeDisplay = function(options)
+	{
+		var container = null,
+			options = options;
+		
+		function init()
+		{
+			container = $('<div />').addClass('TimeSelector_TextDisplay_Container')
+						.append( $('<p />').addClass('TimeSelector_TextDisplay_Value') );
+						
+			options.wrapper.append(container);						
+		}
+		
+		this.displayTime = function(hours, minutes, seconds)
+		{
+			var dateString = "";
+			
+			if (12 == options.hourFormat && hours > 12)
+			{
+				dateString += strpad(hours - 12, 0, 2, -1);
+			}
+			else
+			{
+				dateString += strpad(hours, 0, 2, -1);
+			}
+			
+			if (options.selectMinutes)
+			{
+				dateString += ":" + strpad(minutes, 0, 2, -1);
+			}
+			
+			if (options.selectSeconds)
+			{
+				dateString += ":" + strpad(seconds, 0, 2, -1);
+			}
+			
+			
+			if (12 == options.hourFormat)
+			{
+				dateString += " " + (hours >= 12? 'PM' : 'AM');
+			}
+			
+			$('p', container).text(dateString);
+		}
+		
+		init();
+	}
+	
+	var InputTimeDisplay = function(options)
+	{
+		var input = null,
+			options = options;
+		
+		function init()
+		{
+			input = $('<input type="text" />');
+			
+			options.wrapper.append(input);						
+		}
+		
+		this.displayTime = function(hours, minutes, seconds)
+		{
+			var dateString = "";
+			
+			if (12 == options.hourFormat && hours > 12)
+			{
+				dateString += strpad(hours - 12, 0, 2, -1) + ":";
+			}
+			else
+			{
+				dateString += strpad(hours, 0, 2, -1) + ":";
+			}
+			
+			dateString += strpad(minutes, 0, 2, -1) + ":";
+			dateString += strpad(seconds, 0, 2, -1);
+			
+			if (12 == options.hourFormat)
+			{
+				dateString += " " + (hours >= 12? 'PM' : 'AM');
+			}
+			
+			input.val( dateString )
+		}
+		
+		init();
+	}
+	
+	function strpad(str, pad_str, length, direction)
+	{
+		if (isNaN(str))
+		{
+			throw new Error("You must pass a string to the `strpad` function");
+		}
+		
+		str = str + ''; //cast to string..this seems so hacky and dirty.
+		
+		if (isNaN(pad_str)) pad_str = "0";
+		else pad_str = pad_str + ''; //casting to string. ew.
+		
+		if (isNaN(length)) length = str.length + 1;
+		if (isNaN(direction)) direction = 1;
+		else if (direction < -1 || direction > 1)
+		{
+			throw new Error("Illegal directional value.");
+		}
+		
+		if (str.length == length)
+		{
+			return str;
+		}
+		
+		var pad = '';
+		
+		while ((pad.length / pad_str.length) < (length - str.length))
+		{
+			pad += pad_str;
+		}
+		
+		if (-1 == direction)
+		{
+			str = pad + str;
+		}
+		else
+		{
+			str = str + pad;
+		}
+		
+		return str;
+	}
+	
+})(jQuery);
+</script>
+
+<script type="text/javascript" charset="utf-8">
+$('#start_time').timeSelector({ selectSeconds: false });
+</script>
+</body>
+</html>
