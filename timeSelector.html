@@ -185,19 +185,60 @@ background-image: -webkit-gradient(linear, center top, center bottom, from(#fcfc
 									href: "#nextHour",
 									title: "Next Hour"
 								})
-								.html("+");
+								.html("+")
+								.click(function(event)
+								{
+									var hourEvent = $.Event("hourUp");
+									event.preventDefault();
+									
+									$(this).trigger(hourEvent)
+									
+									if (hourEvent.isDefaultPrevented())
+									{
+										return false;
+									}
+									
+									increaseHourValue();
+								});
 								
 			dom.hourDown	= $('<a />').addClass("TimeSelector_Control_Button TimeSelector_Control_ButtonDown TimeSelector_Control_HourDown")
 								.attr({
 									href: "#prevHour",
 									title: "Previous Hour"
 								})
-								.html("-");
+								.html("-")
+								.click(function(event)
+								{
+									var hourEvent = $.Event("hourDown");
+									event.preventDefault();
+									
+									$(this).trigger(hourEvent)
+									
+									if (hourEvent.isDefaultPrevented())
+									{
+										return false;
+									}
+									
+									decreaseHourValue();
+								});
 								
 			dom.hourVal		= $('<input type="text" />').addClass("TimeSelector_Control_Input TimeSelector_Control_HourInput")
 								.attr({
 									size: 2,
 									maxLength: 2
+								})
+								.change(function(event)
+								{
+									var hourEvent = $.Event('hourChange');
+									$(this).trigger(hourEvent);
+
+									if (hourEvent.isDefaultPrevented())
+									{
+										event.preventDefault();
+										return false;
+									}
+
+									return true;
 								});
 
 			/*table.append(
@@ -308,6 +349,23 @@ background-image: -webkit-gradient(linear, center top, center bottom, from(#fcfc
 		
 		
 		init();
+		
+		function increaseHourValue()
+		{
+			return changeHourValue(1);
+		}
+		
+		function decreaseHourValue()
+		{
+			return changeHourValue(-1);
+		}
+		
+		function changeHourValue(step)
+		{
+			var currentValue = dom.hourVal.val();
+			
+			
+		}
 		
 		/* show
 		 *
